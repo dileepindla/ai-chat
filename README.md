@@ -37,7 +37,7 @@ A powerful chat application that integrates with Ollama to provide multiple AI m
 - Message history preservation
 - Real-time response streaming
 
-![Conversation Features](https://i.postimg.cc/Kc0QJzsT/chat-ai.png)
+![Conversation Features](https://i.postimg.cc/637DVmd7/chat5.png)
 
 ## Getting Started
 
