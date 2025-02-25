@@ -44,7 +44,7 @@ async function streamExternalModel(model: string, messages: any[], apiKey: strin
 
 export async function POST(req: NextRequest) {
   try {
-    const { model, message, chatId, mediaUrl, mediaType, apiKeys } = await req.json();
+    const { model, message, chatId, mediaUrl, mediaType, base64Image, apiKeys } = await req.json();
     
     await connectDB();
 
@@ -56,9 +56,10 @@ export async function POST(req: NextRequest) {
       }
     } else {
       chat = new Chat({ model });
+      await chat.save(); // Save immediately to get the chatId
     }
 
-    // Add user message
+    // Add user message with media
     chat.messages.push({
       role: 'user',
       content: message,
@@ -68,7 +69,9 @@ export async function POST(req: NextRequest) {
 
     // Determine if using external model
     const isExternalModel = EXTERNAL_MODELS[model];
-    
+    console.log("ttest44", mediaUrl)
+    console.log("ttest44", mediaType)
+
     const response = new Response(
       new ReadableStream({
         async start(controller) {
@@ -80,17 +83,35 @@ export async function POST(req: NextRequest) {
               if (!apiKey) throw new Error(`API key required for ${model}`);
               responseStream = await streamExternalModel(model, chat.messages, apiKey);
             } else {
-              responseStream = await fetch('http://localhost:11434/api/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+              let body: any;
+
+              if (model === 'llava:7b' && base64Image) {
+                // For llava with image, only send the current message
+                body = {
+                  model,
+                  messages: [{
+                    role: 'user',
+                    content: message,
+                    images: [base64Image]
+                  }],
+                  stream: true
+                };
+              } else {
+                // For all other cases, send the entire chat history
+                body = {
                   model,
                   messages: chat.messages.map(m => ({
                     role: m.role,
                     content: m.content
                   })),
                   stream: true
-                })
+                };
+              }
+
+              responseStream = await fetch('http://localhost:11434/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
               });
             }
 

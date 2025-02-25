@@ -12,7 +12,8 @@ import ReactMarkdown from 'react-markdown';
 const models = [
   { id: 'qwen2.5:7b', name: 'Qwen 2.5 7B' },
   { id: 'qwen2.5-coder', name: 'Qwen 2.5 Coder' },
-  { id: 'deepseek-r1:8b', name: 'DeepSeek R1 8B' }
+  { id: 'deepseek-r1:8b', name: 'DeepSeek R1 8B' },
+  { id: 'llava:7b', name: 'Llava 7B' }
 ];
 
 export default function Chat() {
@@ -89,11 +90,42 @@ export default function Chat() {
     setIsStreaming(true);
     let mediaUrl = null;
     let mediaType = null;
+    let base64Image = null;
 
     if (mediaFile) {
-      mediaUrl = URL.createObjectURL(mediaFile);
+      console.log("MediaFile received:", mediaFile);
       mediaType = mediaFile.type.startsWith('image/') ? 'image' : 'audio';
+      console.log("MediaType detected:", mediaType);
+      
+      if (mediaType === 'image') {
+        // Convert to base64 only
+        const reader = new FileReader();
+        try {
+          base64Image = await new Promise((resolve, reject) => {
+            reader.onloadend = () => {
+              console.log("FileReader result received");
+              const base64String = reader.result as string;
+              console.log("Base64 string length:", base64String.length);
+              // Store both base64Image and mediaUrl as the base64 string for preview
+              mediaUrl = base64String;
+              resolve(base64String.split(',')[1]);
+            };
+            reader.onerror = (error) => {
+              console.error("FileReader error:", error);
+              reject(error);
+            };
+            reader.readAsDataURL(mediaFile);
+          });
+          console.log("Base64 conversion complete, length:", base64Image?.length);
+        } catch (error) {
+          console.error("Error converting to base64:", error);
+        }
+      } else {
+        mediaUrl = URL.createObjectURL(mediaFile);
+      }
     }
+
+    console.log("Final base64Image:", base64Image ? base64Image.substring(0, 100) + "..." : null);
 
     const newMessage = {
       role: 'user',
@@ -137,6 +169,7 @@ export default function Chat() {
           chatId: currentChatId,
           mediaUrl,
           mediaType,
+          base64Image,
           apiKeys
         }),
         signal: abortController.current.signal
@@ -256,28 +289,19 @@ export default function Chat() {
             {chatHistory.map((msg, idx) => (
               <div
                 key={idx}
-                className={`mb-4 flex ${
-                  msg.role === 'user' ? 'justify-end' : 'justify-start'
-                }`}
+                className={`mb-4 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}
               >
                 <div
-                  className={`max-w-[80%] p-3 rounded-lg ${
-                    msg.role === 'user'
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-100 text-gray-800'
+                  className={`inline-block p-2 rounded-lg ${
+                    msg.role === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200'
                   }`}
                 >
                   {msg.mediaUrl && msg.mediaType === 'image' && (
                     <img
                       src={msg.mediaUrl}
-                      alt="User uploaded"
-                      className="max-w-xs mb-2 rounded"
+                      alt="Uploaded content"
+                      className="max-w-sm mb-2 rounded"
                     />
-                  )}
-                  {msg.mediaUrl && msg.mediaType === 'audio' && (
-                    <audio controls className="mb-2">
-                      <source src={msg.mediaUrl} type="audio/mpeg" />
-                    </audio>
                   )}
                   <div className="whitespace-pre-wrap">
                     {formatMessage(msg.content)}
@@ -294,8 +318,12 @@ export default function Chat() {
           <form onSubmit={handleSubmit} className="flex gap-2">
             <Input
               type="file"
-              accept="image/*,audio/*"
-              onChange={(e) => setMediaFile(e.target.files[0])}
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                console.log("File selected:", file);
+                setMediaFile(file);
+              }}
               className="w-1/4"
             />
             <Input
