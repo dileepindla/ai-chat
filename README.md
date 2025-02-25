@@ -29,7 +29,7 @@ A powerful chat application that integrates with Ollama to provide multiple AI m
 - Real-time image preview
 - Contextual responses based on image content
 
-![Image Analysis]
+![Image Analysis](https://i.postimg.cc/fWtw538t/chat4.png)
 
 ### 4. Conversation Features
 - Markdown support in responses
@@ -37,7 +37,8 @@ A powerful chat application that integrates with Ollama to provide multiple AI m
 - Message history preservation
 - Real-time response streaming
 
-![Conversation Features]
+![Conversation Features](https://i.postimg.cc/Kc0QJzsT/chat-ai.png)
+
 ## Getting Started
 
 ### Prerequisites
