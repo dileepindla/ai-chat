@@ -1,101 +1,322 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useState, useRef, useEffect } from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Sidebar } from "@/components/Sidebar";
+import { Settings } from "@/components/Settings";
+import ReactMarkdown from 'react-markdown';
+
+const models = [
+  { id: 'qwen2.5:7b', name: 'Qwen 2.5 7B' },
+  { id: 'qwen2.5-coder', name: 'Qwen 2.5 Coder' },
+  { id: 'deepseek-r1:8b', name: 'DeepSeek R1 8B' }
+];
+
+export default function Chat() {
+  const [selectedModel, setSelectedModel] = useState(models[0].id);
+  const [message, setMessage] = useState('');
+  const [chatHistory, setChatHistory] = useState([]);
+  const [allChats, setAllChats] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentChatId, setCurrentChatId] = useState(null);
+  const [mediaFile, setMediaFile] = useState(null);
+  const [apiKeys, setApiKeys] = useState({
+    openai: '',
+    anthropic: '',
+    // Add more providers as needed
+  });
+  const [isStreaming, setIsStreaming] = useState(false);
+  
+  const messagesEndRef = useRef(null);
+  const abortController = useRef(null);
+
+  useEffect(() => {
+    fetchChats();
+    // Load API keys from localStorage
+    const savedKeys = localStorage.getItem('apiKeys');
+    if (savedKeys) {
+      setApiKeys(JSON.parse(savedKeys));
+    }
+  }, []);
+
+  const fetchChats = async () => {
+    try {
+      const response = await fetch('/api/chats');
+      if (!response.ok) throw new Error('Failed to fetch chats');
+      const data = await response.json();
+      setAllChats(data);
+    } catch (error) {
+      console.error('Error fetching chats:', error);
+    }
+  };
+
+  const loadChat = async (chatId) => {
+    try {
+      const chat = allChats.find(c => c._id === chatId);
+      if (chat) {
+        setCurrentChatId(chatId);
+        setChatHistory(chat.messages);
+        setSelectedModel(chat.model);
+      }
+    } catch (error) {
+      console.error('Error loading chat:', error);
+    }
+  };
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [chatHistory]);
+
+  const handleStopStream = () => {
+    if (abortController.current) {
+      abortController.current.abort();
+      setIsStreaming(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!message && !mediaFile) return;
+
+    setIsLoading(true);
+    setIsStreaming(true);
+    let mediaUrl = null;
+    let mediaType = null;
+
+    if (mediaFile) {
+      mediaUrl = URL.createObjectURL(mediaFile);
+      mediaType = mediaFile.type.startsWith('image/') ? 'image' : 'audio';
+    }
+
+    const newMessage = {
+      role: 'user',
+      content: message,
+      mediaUrl,
+      mediaType
+    };
+
+    // If it's a new chat, create it with the first message as title
+    if (!currentChatId) {
+      try {
+        const response = await fetch('/api/chats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: selectedModel,
+            title: message.substring(0, 50),
+            messages: [newMessage]
+          })
+        });
+        const newChat = await response.json();
+        setCurrentChatId(newChat._id);
+        fetchChats(); // Refresh sidebar
+      } catch (error) {
+        console.error('Error creating new chat:', error);
+      }
+    }
+
+    setChatHistory(prev => [...prev, newMessage]);
+    setMessage('');
+    setMediaFile(null);
+
+    try {
+      abortController.current = new AbortController();
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: selectedModel,
+          message,
+          chatId: currentChatId,
+          mediaUrl,
+          mediaType,
+          apiKeys
+        }),
+        signal: abortController.current.signal
+      });
+
+      if (!response.ok) throw new Error('Failed to send message');
+
+      const reader = response.body.getReader();
+      let assistantMessage = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = new TextDecoder().decode(value);
+        assistantMessage += chunk;
+
+        setChatHistory(prev => {
+          const newHistory = [...prev];
+          if (newHistory[newHistory.length - 1]?.role === 'assistant') {
+            newHistory[newHistory.length - 1].content = assistantMessage;
+          } else {
+            newHistory.push({ role: 'assistant', content: assistantMessage });
+          }
+          return newHistory;
+        });
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log('Stream was stopped');
+      } else {
+        console.error('Error:', error);
+      }
+    } finally {
+      setIsLoading(false);
+      setIsStreaming(false);
+    }
+  };
+
+  const formatMessage = (content) => {
+    return (
+      <ReactMarkdown
+        components={{
+          code({ node, inline, className, children, ...props }) {
+            const match = /language-(\w+)/.exec(className || '');
+            return !inline ? (
+              <pre className="bg-gray-800 text-white p-4 rounded-lg overflow-x-auto">
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              </pre>
+            ) : (
+              <code className="bg-gray-200 px-1 rounded" {...props}>
+                {children}
+              </code>
+            );
+          },
+          strong({ node, children }) {
+            return <span className="font-bold">{children}</span>;
+          }
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    );
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="flex h-screen">
+      {/* Sidebar */}
+      <Sidebar 
+        chats={allChats} 
+        onSelectChat={loadChat}
+        onNewChat={() => {
+          setCurrentChatId(null);
+          setChatHistory([]);
+        }}
+        onDeleteChat={async (chatId) => {
+          try {
+            await fetch(`/api/chats/${chatId}`, { method: 'DELETE' });
+            fetchChats();
+            if (currentChatId === chatId) {
+              setCurrentChatId(null);
+              setChatHistory([]);
+            }
+          } catch (error) {
+            console.error('Error deleting chat:', error);
+          }
+        }}
+      />
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      {/* Main Chat Area */}
+      <div className="flex flex-col flex-1">
+        {/* Top Bar */}
+        <div className="flex items-center justify-between p-4 border-b">
+          <Select value={selectedModel} onValueChange={setSelectedModel}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Select a model" />
+            </SelectTrigger>
+            <SelectContent>
+              {models.map(model => (
+                <SelectItem key={model.id} value={model.id}>
+                  {model.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Settings 
+            apiKeys={apiKeys}
+            onUpdateApiKeys={setApiKeys}
+          />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* Chat Messages */}
+        <div className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full p-4">
+            {chatHistory.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`mb-4 flex ${
+                  msg.role === 'user' ? 'justify-end' : 'justify-start'
+                }`}
+              >
+                <div
+                  className={`max-w-[80%] p-3 rounded-lg ${
+                    msg.role === 'user'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}
+                >
+                  {msg.mediaUrl && msg.mediaType === 'image' && (
+                    <img
+                      src={msg.mediaUrl}
+                      alt="User uploaded"
+                      className="max-w-xs mb-2 rounded"
+                    />
+                  )}
+                  {msg.mediaUrl && msg.mediaType === 'audio' && (
+                    <audio controls className="mb-2">
+                      <source src={msg.mediaUrl} type="audio/mpeg" />
+                    </audio>
+                  )}
+                  <div className="whitespace-pre-wrap">
+                    {formatMessage(msg.content)}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </ScrollArea>
+        </div>
+
+        {/* Input Area */}
+        <div className="p-4 border-t">
+          <form onSubmit={handleSubmit} className="flex gap-2">
+            <Input
+              type="file"
+              accept="image/*,audio/*"
+              onChange={(e) => setMediaFile(e.target.files[0])}
+              className="w-1/4"
+            />
+            <Input
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Type your message..."
+              disabled={isLoading}
+              className="flex-1"
+            />
+            {isStreaming ? (
+              <Button type="button" onClick={handleStopStream} variant="destructive">
+                Stop
+              </Button>
+            ) : (
+              <Button type="submit" disabled={isLoading}>
+                Send
+              </Button>
+            )}
+          </form>
+        </div>
+      </div>
     </div>
   );
 }
