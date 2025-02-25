@@ -1,36 +1,114 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Chat Application with Ollama Integration
 
+A powerful chat application that integrates with Ollama to provide multiple AI model support, including image analysis capabilities.
+
+![Application Overview](https://i.postimg.cc/4NMPR0GN/chat-3.png)
+
+## Features
+
+### 1. Multi-Model Support
+- Support for multiple Ollama models:
+  - Qwen 2.5 7B
+  - Qwen 2.5 Coder
+  - DeepSeek R1 8B
+  - Llava (Image Analysis Model)
+
+![Model Selection](https://i.postimg.cc/c1hk2T6r/chat2.png)
+
+### 2. Chat Management
+- Create new chat sessions
+- Continue existing conversations with context preservation
+- Automatic chat history saving
+- Real-time streaming responses
+
+![Chat Interface](https://i.postimg.cc/Kc0QJzsT/chat-ai.png)
+
+### 3. Image Analysis
+- Upload and analyze images using the Llava model
+- Support for various image formats
+- Real-time image preview
+- Contextual responses based on image content
+
+![Image Analysis]
+
+### 4. Conversation Features
+- Markdown support in responses
+- Code syntax highlighting
+- Message history preservation
+- Real-time response streaming
+
+![Conversation Features]
 ## Getting Started
 
-First, run the development server:
-
+### Prerequisites
+1. Install Ollama on your system
+2. Pull required models:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+ollama pull qwen2.5:7b
+ollama pull qwen2.5-coder
+ollama pull deepseek-r1:8b
+ollama pull llava:7b
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Installation
+1. Clone the repository
+```bash
+git clone <repository-url>
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+2. Install dependencies
+```bash
+npm install
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3. Run the development server
+```bash
+npm run dev
+```
 
-## Learn More
+4. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-To learn more about Next.js, take a look at the following resources:
+## Usage
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Starting a New Chat
+1. Click the "New Chat" button
+2. Select your desired model
+3. Type your message or upload an image
+4. Press send or hit Enter
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Image Analysis
+1. Select the Llava model
+2. Click the image upload button
+3. Select your image
+4. Add any additional text prompt (optional)
+5. Send your message
 
-## Deploy on Vercel
+### Continuing Conversations
+- Previous chats are saved automatically
+- Click on any chat in the sidebar to continue the conversation
+- Context is preserved throughout the conversation
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Technical Details
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Architecture
+- Next.js 14 with App Router
+- MongoDB for chat storage
+- Ollama API integration
+- Server-Sent Events for streaming responses
+
+### API Endpoints
+- `/api/chat`: Handles chat messages and image analysis
+- `/api/chats`: Manages chat sessions
+
+### Models
+- Chat sessions with message history
+- Support for different message types (text, images)
+- Real-time response streaming
+
+## Contributing
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+
+## Acknowledgments
+- Ollama team for providing the model API
+- Next.js team for the framework
