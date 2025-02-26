@@ -10,9 +10,9 @@ import { Settings } from "@/components/Settings";
 import ReactMarkdown from 'react-markdown';
 
 const models = [
-  { id: 'qwen2.5:7b', name: 'Qwen 2.5 7B' },
-  { id: 'qwen2.5-coder', name: 'Qwen 2.5 Coder' },
-  { id: 'deepseek-r1:8b', name: 'DeepSeek R1 8B' },
+  { id: 'llama3:8b', name: 'LLama 3 8B' },
+  { id: 'qwen2.5-coder:14b', name: 'Qwen 2.5 Coder' },
+  { id: 'deepseek-r1:14b', name: 'DeepSeek R1' },
   { id: 'llava:7b', name: 'Llava 7B' }
 ];
 
@@ -92,6 +92,9 @@ export default function Chat() {
     let mediaType = null;
     let base64Image = null;
 
+    // Store the user's message for reference
+    const userMessage = message;
+
     if (mediaFile) {
       console.log("MediaFile received:", mediaFile);
       mediaType = mediaFile.type.startsWith('image/') ? 'image' : 'audio';
@@ -129,34 +132,75 @@ export default function Chat() {
 
     const newMessage = {
       role: 'user',
-      content: message,
+      content: userMessage,
       mediaUrl,
       mediaType
     };
 
-    // If it's a new chat, create it with the first message as title
-    if (!currentChatId) {
-      try {
-        const response = await fetch('/api/chats', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: selectedModel,
-            title: message.substring(0, 50),
-            messages: [newMessage]
-          })
-        });
-        const newChat = await response.json();
-        setCurrentChatId(newChat._id);
-        fetchChats(); // Refresh sidebar
-      } catch (error) {
-        console.error('Error creating new chat:', error);
-      }
-    }
-
+    // Update local chat history with user message immediately
     setChatHistory(prev => [...prev, newMessage]);
     setMessage('');
     setMediaFile(null);
+
+    let chatId = currentChatId;
+    
+    // Create a new chat only if this is the first message
+    if (!chatId && chatHistory.length === 0) {
+      try {
+        console.log('Creating new chat with payload:', {
+          model: selectedModel,
+          title: userMessage.substring(0, 50),
+          messages: [newMessage]
+        });
+
+        const createChatResponse = await fetch('/api/chats', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+            model: selectedModel,
+            title: userMessage.substring(0, 50),
+            messages: [{
+              role: 'user',
+              content: userMessage,
+              mediaUrl: mediaUrl || null,
+              mediaType: mediaType || null
+            }]
+          })
+        });
+
+        if (!createChatResponse.ok) {
+          const errorData = await createChatResponse.text();
+          console.error('Chat creation failed:', {
+            status: createChatResponse.status,
+            statusText: createChatResponse.statusText,
+            error: errorData
+          });
+          throw new Error(`Failed to create chat: ${createChatResponse.status} ${errorData}`);
+        }
+
+        const newChat = await createChatResponse.json();
+        console.log('New chat created:', newChat);
+        
+        if (!newChat._id) {
+          throw new Error('Created chat is missing _id');
+        }
+
+        chatId = newChat._id;
+        setCurrentChatId(chatId);
+        await fetchChats(); // Refresh sidebar
+      } catch (error) {
+        console.error('Detailed error creating new chat:', error);
+        setChatHistory(prev => prev.slice(0, -1));
+        setIsLoading(false);
+        setIsStreaming(false);
+        // Show error to user
+        alert(`Failed to create chat: ${error.message}`);
+        return;
+      }
+    }
 
     try {
       abortController.current = new AbortController();
@@ -165,8 +209,8 @@ export default function Chat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: selectedModel,
-          message,
-          chatId: currentChatId,
+          message: userMessage,
+          chatId,
           mediaUrl,
           mediaType,
           base64Image,
@@ -175,7 +219,13 @@ export default function Chat() {
         signal: abortController.current.signal
       });
 
-      if (!response.ok) throw new Error('Failed to send message');
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
+
+      if (!response.body) {
+        throw new Error('No response body received');
+      }
 
       const reader = response.body.getReader();
       let assistantMessage = '';
@@ -184,24 +234,42 @@ export default function Chat() {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = new TextDecoder().decode(value);
-        assistantMessage += chunk;
+        // Ensure the chunk is valid before processing
+        try {
+          const chunk = new TextDecoder().decode(value);
+          assistantMessage += chunk;
 
-        setChatHistory(prev => {
-          const newHistory = [...prev];
-          if (newHistory[newHistory.length - 1]?.role === 'assistant') {
-            newHistory[newHistory.length - 1].content = assistantMessage;
-          } else {
-            newHistory.push({ role: 'assistant', content: assistantMessage });
-          }
-          return newHistory;
-        });
+          setChatHistory(prev => {
+            const newHistory = [...prev];
+            const lastMessage = newHistory[newHistory.length - 1];
+            
+            if (lastMessage?.role === 'assistant') {
+              newHistory[newHistory.length - 1] = {
+                ...lastMessage,
+                content: assistantMessage
+              };
+            } else {
+              newHistory.push({ role: 'assistant', content: assistantMessage });
+            }
+            return newHistory;
+          });
+        } catch (error) {
+          console.error('Error processing chunk:', error);
+        }
       }
     } catch (error) {
       if (error.name === 'AbortError') {
         console.log('Stream was stopped');
       } else {
         console.error('Error:', error);
+        // Remove the last message if there was an error
+        setChatHistory(prev => {
+          const newHistory = [...prev];
+          if (newHistory[newHistory.length - 1]?.role === 'assistant') {
+            return newHistory.slice(0, -1);
+          }
+          return newHistory;
+        });
       }
     } finally {
       setIsLoading(false);
@@ -326,12 +394,24 @@ export default function Chat() {
               }}
               className="w-1/4"
             />
-            <Input
+            <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="Type your message..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
+              placeholder="Type your message... (Shift+Enter for new line)"
               disabled={isLoading}
-              className="flex-1"
+              className="flex-1 p-2 border rounded-md resize-none min-h-[40px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={1}
+              style={{
+                height: 'auto',
+                minHeight: '40px',
+                maxHeight: '200px'
+              }}
             />
             {isStreaming ? (
               <Button type="button" onClick={handleStopStream} variant="destructive">

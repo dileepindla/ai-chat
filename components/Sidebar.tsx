@@ -4,42 +4,43 @@ import { Trash2 } from 'lucide-react';
 
 export function Sidebar({ chats, onSelectChat, onNewChat, onDeleteChat }) {
   return (
-    <div className="w-64 border-r bg-gray-50 flex flex-col h-full">
-      <div className="p-4">
-        <Button onClick={onNewChat} className="w-full">
+    <div className="w-64 border-r h-screen flex flex-col">
+      <div className="p-4 border-b">
+        <Button 
+          className="w-full"
+          onClick={onNewChat}
+        >
           New Chat
         </Button>
       </div>
-      <ScrollArea className="flex-1">
-        <div className="p-4 space-y-2">
-          {Array.isArray(chats) && chats.map((chat) => (
-            <div
-              key={chat?._id}
-              className="flex items-center justify-between p-2 hover:bg-gray-200 rounded cursor-pointer group"
+      <div className="flex-1 overflow-y-auto">
+        {chats?.map(chat => (
+          <div
+            key={chat?._id}
+            className="flex items-center justify-between p-2 hover:bg-gray-200 rounded cursor-pointer"
+          >
+            <div 
+              className="flex-1 truncate mr-2 min-w-0"
+              onClick={() => onSelectChat(chat?._id)}
             >
-              <div 
-                className="flex-1 truncate mr-2"
-                onClick={() => onSelectChat(chat?._id)}
-              >
-                {chat?.messages?.[0]?.content 
-                  ? `${chat.messages[0].content.substring(0, 30)}...`
-                  : 'New Chat'}
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="opacity-0 group-hover:opacity-100"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteChat(chat._id);
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              {chat?.messages?.[0]?.content 
+                ? `${chat.messages[0].content.substring(0, 30)}...`
+                : 'New Chat'}
             </div>
-          ))}
-        </div>
-      </ScrollArea>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="flex-shrink-0 ml-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteChat(chat._id);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 } 

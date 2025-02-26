@@ -83,29 +83,18 @@ export async function POST(req: NextRequest) {
               if (!apiKey) throw new Error(`API key required for ${model}`);
               responseStream = await streamExternalModel(model, chat.messages, apiKey);
             } else {
-              let body: any;
+              let body: any = {
+                model,
+                messages: chat.messages.map(m => ({
+                  role: m.role,
+                  content: m.content
+                })),
+                stream: true
+              };
 
+              // Add image to the last message if it exists
               if (model === 'llava:7b' && base64Image) {
-                // For llava with image, only send the current message
-                body = {
-                  model,
-                  messages: [{
-                    role: 'user',
-                    content: message,
-                    images: [base64Image]
-                  }],
-                  stream: true
-                };
-              } else {
-                // For all other cases, send the entire chat history
-                body = {
-                  model,
-                  messages: chat.messages.map(m => ({
-                    role: m.role,
-                    content: m.content
-                  })),
-                  stream: true
-                };
+                body.messages[body.messages.length - 1].images = [base64Image];
               }
 
               responseStream = await fetch('http://localhost:11434/api/chat', {
